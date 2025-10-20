@@ -2,13 +2,12 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 
-// Lucide React Icons (shadcn uses these)
+// Lucide React Icons
 import { 
   Menu, 
   ChevronDown, 
   ChevronRight,
   File, 
-  FolderOpen,
   Search,
   Copy,
   Download,
@@ -19,7 +18,7 @@ import {
   Trash2,
   Plus,
   X,
-  Edit3
+  GripVertical
 } from 'lucide-react';
 
 function App() {
@@ -29,14 +28,11 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [parseMode, setParseMode] = useState(false);
   const [rawPrompt, setRawPrompt] = useState('');
-  const [activeTab, setActiveTab] = useState('edit');
-  const [editingSubject, setEditingSubject] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const contentRefs = useRef({});
-
-  const prefersReducedMotion = typeof window !== 'undefined' 
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
-    : false;
+  const [splitView, setSplitView] = useState(true);
+  const [splitPosition, setSplitPosition] = useState(50); // percentage
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef(null);
 
   const parsePrompt = (text) => {
     const lines = text.split('\n');
@@ -152,6 +148,12 @@ function App() {
     setSections(parsed);
     if (parsed.length > 0) {
       setSelectedSection(parsed[0]);
+      // Expand all subjects by default
+      const allIds = new Set();
+      parsed.forEach(section => {
+        section.subjects?.forEach(subject => allIds.add(subject.id));
+      });
+      setExpandedSubjects(allIds);
     }
     setParseMode(true);
   };
@@ -169,17 +171,6 @@ function App() {
   };
 
   const isSubjectExpanded = (id) => expandedSubjects.has(id);
-
-  const filterContent = (text) => {
-    if (!searchQuery) return true;
-    return text.toLowerCase().includes(searchQuery.toLowerCase());
-  };
-
-  const highlightText = (text) => {
-    if (!searchQuery) return text;
-    const regex = new RegExp(`(${searchQuery})`, 'gi');
-    return text.replace(regex, '<mark style="background-color: #FFF3CD; padding: 2px 4px; border-radius: 2px;">$1</mark>');
-  };
 
   const toggleVisibility = (id) => {
     const updateSections = (sectionList) => {
@@ -411,7 +402,6 @@ function App() {
   const copyToClipboard = () => {
     const text = reconstructPrompt();
     navigator.clipboard.writeText(text);
-    alert('Copied to clipboard!');
   };
 
   const downloadPrompt = () => {
@@ -433,6 +423,38 @@ function App() {
     setSearchQuery('');
   };
 
+  // Resizable split view handlers
+  const handleMouseDown = () => {
+    setIsResizing(true);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isResizing || !containerRef.current) return;
+    
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const newPosition = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+    
+    if (newPosition > 20 && newPosition < 80) {
+      setSplitPosition(newPosition);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsResizing(false);
+  };
+
+  React.useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isResizing]);
+
   // Input mode
   if (!parseMode) {
     return (
@@ -443,7 +465,7 @@ function App() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <h1>Prompter</h1>
+          <h1>PROMPTER</h1>
           <p>Parse and organize your system prompts</p>
         </motion.div>
         <motion.div 
@@ -470,279 +492,320 @@ The parser recognizes:
             whileHover={rawPrompt.trim() ? { scale: 1.02 } : {}}
             whileTap={rawPrompt.trim() ? { scale: 0.98 } : {}}
           >
-            Parse Prompt →
+            Parse Prompt
           </motion.button>
         </motion.div>
       </div>
     );
   }
 
-  // Main view with collapsible sidebar
+  // Main view with split editing/preview
   return (
-    <div className="app-container">
-      {/* Tabs */}
-      <div className="tabs">
-        <motion.button
-          onClick={() => setActiveTab('edit')}
-          className={`tab ${activeTab === 'edit' ? 'active' : ''}`}
-          whileHover={{ backgroundColor: activeTab !== 'edit' ? '#E9ECEF' : undefined }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <Edit3 size={16} />
-          <span>Edit Sections</span>
-        </motion.button>
-        <motion.button
-          onClick={() => setActiveTab('preview')}
-          className={`tab ${activeTab === 'preview' ? 'active' : ''}`}
-          whileHover={{ backgroundColor: activeTab !== 'preview' ? '#E9ECEF' : undefined }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <Eye size={16} />
-          <span>Live Preview</span>
-        </motion.button>
+    <div className="app-container" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+      {/* Top Bar */}
+      <div className="top-bar">
+        <div className="top-bar-left">
+          <motion.button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="icon-btn"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Menu size={20} />
+          </motion.button>
+          <div className="top-bar-actions">
+            <motion.button onClick={resetToInput} className="icon-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <X size={18} />
+            </motion.button>
+            <motion.button onClick={copyToClipboard} className="icon-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Copy size={18} />
+            </motion.button>
+            <motion.button onClick={downloadPrompt} className="icon-btn" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Download size={18} />
+            </motion.button>
+          </div>
+        </div>
+        <div className="view-tabs">
+          <button
+            onClick={() => setSplitView(false)}
+            className={`view-tab ${!splitView ? 'active' : ''}`}
+          >
+            EDIT SECTIONS
+          </button>
+          <button
+            onClick={() => setSplitView(true)}
+            className={`view-tab ${splitView ? 'active' : ''}`}
+          >
+            LIVE PREVIEW
+          </button>
+        </div>
       </div>
 
-      {activeTab === 'edit' ? (
-        <div className="main-layout">
-          {/* Collapsible Sidebar */}
-          <motion.div 
-            className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
-            animate={{ width: sidebarCollapsed ? '80px' : '280px' }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-          >
-            {/* Toggle Button */}
-            <div className="sidebar-toggle">
-              <motion.button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="toggle-btn"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+      <div className="main-layout">
+        {/* Sidebar */}
+        <motion.div 
+          className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
+          animate={{ width: sidebarCollapsed ? '70px' : '240px' }}
+          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <AnimatePresence mode="wait">
+            {!sidebarCollapsed && (
+              <motion.div
+                className="sidebar-header"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
               >
-                <Menu size={20} />
-              </motion.button>
-            </div>
+                <h2>Sections</h2>
+                <p>{sections.length} sections</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            {/* Sidebar Header */}
-            <AnimatePresence mode="wait">
-              {!sidebarCollapsed && (
-                <motion.div
-                  className="sidebar-header"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <h2>Sections</h2>
-                  <p>{sections.length} sections</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Sidebar Actions */}
-            <div className="sidebar-actions">
+          <nav className="section-list">
+            {sections.map((section, index) => (
               <motion.button
-                onClick={resetToInput}
-                className="action-icon-btn"
-                title="Back to input"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <X size={18} />
-              </motion.button>
-              <motion.button
-                onClick={copyToClipboard}
-                className="action-icon-btn"
-                title="Copy to clipboard"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <Copy size={18} />
-              </motion.button>
-              <motion.button
-                onClick={downloadPrompt}
-                className="action-icon-btn"
-                title="Download"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <Download size={18} />
-              </motion.button>
-            </div>
-
-            {/* Section List */}
-            <nav className="section-list">
-              {sections.map((section, index) => (
-                <motion.button
-                  key={section.id}
-                  onClick={() => setSelectedSection(section)}
-                  className={`section-item ${selectedSection?.id === section.id ? 'active' : ''}`}
-                  style={{ opacity: section.visible ? 1 : 0.5 }}
-                  whileHover={{ x: sidebarCollapsed ? 0 : 4 }}
-                  whileTap={{ scale: 0.98 }}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: section.visible ? 1 : 0.5, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                >
-                  <div className="section-icon">
-                    <File size={18} />
-                  </div>
-                  <AnimatePresence mode="wait">
-                    {!sidebarCollapsed && (
-                      <motion.div
-                        className="section-content"
-                        initial={{ opacity: 0, width: 0 }}
-                        animate={{ opacity: 1, width: 'auto' }}
-                        exit={{ opacity: 0, width: 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <span className="section-title">{section.title}</span>
-                        <div className="section-actions" onClick={(e) => e.stopPropagation()}>
-                          <motion.button
-                            onClick={() => toggleVisibility(section.id)}
-                            whileHover={{ scale: 1.2 }}
-                            whileTap={{ scale: 0.9 }}
-                          >
-                            {section.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                          </motion.button>
-                          <motion.button
-                            onClick={() => moveSection(section.id, 'up')}
-                            whileHover={{ scale: 1.2 }}
-                            whileTap={{ scale: 0.9 }}
-                          >
-                            <ArrowUp size={14} />
-                          </motion.button>
-                          <motion.button
-                            onClick={() => moveSection(section.id, 'down')}
-                            whileHover={{ scale: 1.2 }}
-                            whileTap={{ scale: 0.9 }}
-                          >
-                            <ArrowDown size={14} />
-                          </motion.button>
-                          <motion.button
-                            onClick={() => deleteSection(section.id)}
-                            className="delete"
-                            whileHover={{ scale: 1.2 }}
-                            whileTap={{ scale: 0.9 }}
-                          >
-                            <Trash2 size={14} />
-                          </motion.button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.button>
-              ))}
-              
-              <motion.button
-                onClick={addNewSection}
-                className="add-section-btn"
-                whileHover={{ scale: sidebarCollapsed ? 1.1 : 1.02 }}
+                key={section.id}
+                onClick={() => setSelectedSection(section)}
+                className={`section-item ${selectedSection?.id === section.id ? 'active' : ''}`}
+                style={{ opacity: section.visible ? 1 : 0.5 }}
+                whileHover={{ x: sidebarCollapsed ? 0 : 2 }}
                 whileTap={{ scale: 0.98 }}
               >
-                <Plus size={18} />
-                {!sidebarCollapsed && <span>Add Section</span>}
+                <div className="section-icon">
+                  <File size={18} />
+                </div>
+                <AnimatePresence mode="wait">
+                  {!sidebarCollapsed && (
+                    <motion.div
+                      className="section-content"
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: 'auto' }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <span className="section-title">{section.title}</span>
+                      <div className="section-actions" onClick={(e) => e.stopPropagation()}>
+                        <motion.button onClick={() => toggleVisibility(section.id)} whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
+                          {section.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                        </motion.button>
+                        <motion.button onClick={() => deleteSection(section.id)} className="delete" whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
+                          <Trash2 size={14} />
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.button>
-            </nav>
-          </motion.div>
+            ))}
+            
+            <motion.button
+              onClick={addNewSection}
+              className="add-section-btn"
+              whileHover={{ scale: sidebarCollapsed ? 1.1 : 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <Plus size={18} />
+              {!sidebarCollapsed && <span>Add Section</span>}
+            </motion.button>
+          </nav>
+        </motion.div>
 
-          {/* Content Area */}
-          <div className="content-area">
-            <div className="content-inner">
-              <div className="search-bar">
-                <Search size={18} className="search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search in this section..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="search-input"
-                />
-              </div>
+        {/* Content Area with Split View */}
+        <div className="content-wrapper" ref={containerRef}>
+          {splitView ? (
+            <>
+              {/* Edit Panel */}
+              <div className="content-panel" style={{ width: `${splitPosition}%` }}>
+                <div className="panel-content">
+                  <div className="search-bar">
+                    <Search size={18} className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Search in this section..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="search-input"
+                    />
+                  </div>
 
-              <div className="section-title-row">
-                <input
-                  type="text"
-                  value={selectedSection?.title || ''}
-                  onChange={(e) => updateSectionTitle(selectedSection.id, e.target.value)}
-                  className="section-title-input"
-                  placeholder="Section Title"
-                />
-                <motion.button
-                  onClick={() => addNewSubject(selectedSection.id)}
-                  className="add-subsection-btn"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Plus size={16} />
-                  <span>Add Subsection</span>
-                </motion.button>
-              </div>
+                  <div className="section-title-row">
+                    <input
+                      type="text"
+                      value={selectedSection?.title || ''}
+                      onChange={(e) => updateSectionTitle(selectedSection.id, e.target.value)}
+                      className="section-title-input"
+                      placeholder="Section Title"
+                    />
+                    <motion.button
+                      onClick={() => addNewSubject(selectedSection?.id)}
+                      className="add-btn"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <Plus size={16} />
+                      ADD SUBSECTION
+                    </motion.button>
+                  </div>
 
-              <div className="subjects-list">
-                <AnimatePresence>
-                  {selectedSection?.subjects?.map((subject, index) => {
-                    const shouldShow = !searchQuery || filterContent(subject.title) || filterContent(subject.content);
-                    if (!shouldShow) return null;
+                  <div className="subjects-list">
+                    {selectedSection?.subjects?.map((subject, index) => {
+                      const isExpanded = isSubjectExpanded(subject.id);
 
-                    const isEditing = editingSubject === subject.id;
-                    const isExpanded = isSubjectExpanded(subject.id);
-
-                    return (
-                      <motion.div
-                        key={subject.id}
-                        className="subject-card"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        transition={{ delay: index * 0.05 }}
-                        layout
-                      >
-                        <motion.div className="subject-header" whileHover={{ backgroundColor: '#F8F9FA' }}>
-                          <motion.button
-                            onClick={() => toggleSubject(subject.id)}
-                            className="expand-btn"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                          >
-                            <motion.div
-                              animate={{ rotate: isExpanded ? 90 : 0 }}
-                              transition={{ duration: 0.2 }}
+                      return (
+                        <motion.div
+                          key={subject.id}
+                          className="subject-card"
+                          layout
+                        >
+                          <div className="subject-header">
+                            <motion.button
+                              onClick={() => toggleSubject(subject.id)}
+                              className="expand-btn"
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
                             >
-                              <ChevronRight size={18} />
-                            </motion.div>
-                          </motion.button>
+                              <motion.div
+                                animate={{ rotate: isExpanded ? 90 : 0 }}
+                                transition={{ duration: 0.2 }}
+                              >
+                                <ChevronRight size={16} />
+                              </motion.div>
+                            </motion.button>
 
-                          {isEditing ? (
                             <input
                               type="text"
                               value={subject.title}
                               onChange={(e) => updateSubjectTitle(selectedSection.id, subject.id, e.target.value)}
-                              onBlur={() => setEditingSubject(null)}
-                              autoFocus
-                              className="subject-title-edit"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') setEditingSubject(null);
-                              }}
+                              className="subject-title-input"
                             />
-                          ) : (
-                            <span
-                              onClick={() => setEditingSubject(subject.id)}
-                              className="subject-title"
-                              dangerouslySetInnerHTML={{ __html: highlightText(subject.title) }}
-                            />
-                          )}
 
-                          <div className="subject-actions">
                             <motion.button
                               onClick={() => deleteSubject(selectedSection.id, subject.id)}
-                              className="delete"
-                              whileHover={{ scale: 1.2 }}
+                              className="delete-btn"
+                              whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
                             >
                               <Trash2 size={16} />
                             </motion.button>
                           </div>
+
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div
+                                className="subject-content"
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                              >
+                                <textarea
+                                  value={subject.content}
+                                  onChange={(e) => updateSubjectContent(selectedSection.id, subject.id, e.target.value)}
+                                  className="subject-textarea"
+                                  placeholder="Add your content here..."
+                                />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Resizable Divider */}
+              <div 
+                className="resize-handle"
+                onMouseDown={handleMouseDown}
+                style={{ cursor: isResizing ? 'col-resize' : 'col-resize' }}
+              >
+                <GripVertical size={20} />
+              </div>
+
+              {/* Preview Panel */}
+              <div className="content-panel preview-panel" style={{ width: `${100 - splitPosition}%` }}>
+                <div className="panel-content">
+                  <div className="preview-header-inline">
+                    <h3>Live Preview</h3>
+                    <span>{sections.filter(s => s.visible).length} visible sections</span>
+                  </div>
+                  <div className="preview-box">
+                    <pre>{reconstructPrompt()}</pre>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Edit Only View */
+            <div className="content-panel" style={{ width: '100%' }}>
+              <div className="panel-content">
+                <div className="search-bar">
+                  <Search size={18} className="search-icon" />
+                  <input
+                    type="text"
+                    placeholder="Search in this section..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+
+                <div className="section-title-row">
+                  <input
+                    type="text"
+                    value={selectedSection?.title || ''}
+                    onChange={(e) => updateSectionTitle(selectedSection?.id, e.target.value)}
+                    className="section-title-input"
+                    placeholder="Section Title"
+                  />
+                  <motion.button
+                    onClick={() => addNewSubject(selectedSection?.id)}
+                    className="add-btn"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Plus size={16} />
+                    ADD SUBSECTION
+                  </motion.button>
+                </div>
+
+                <div className="subjects-list">
+                  {selectedSection?.subjects?.map((subject) => {
+                    const isExpanded = isSubjectExpanded(subject.id);
+
+                    return (
+                      <motion.div key={subject.id} className="subject-card" layout>
+                        <div className="subject-header">
+                          <motion.button
+                            onClick={() => toggleSubject(subject.id)}
+                            className="expand-btn"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                              <ChevronRight size={16} />
+                            </motion.div>
+                          </motion.button>
+
+                          <input
+                            type="text"
+                            value={subject.title}
+                            onChange={(e) => updateSubjectTitle(selectedSection?.id, subject.id, e.target.value)}
+                            className="subject-title-input"
+                          />
+
+                          <motion.button
+                            onClick={() => deleteSubject(selectedSection?.id, subject.id)}
+                            className="delete-btn"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                          >
+                            <Trash2 size={16} />
+                          </motion.button>
+                        </div>
 
                         <AnimatePresence>
                           {isExpanded && (
@@ -755,9 +818,9 @@ The parser recognizes:
                             >
                               <textarea
                                 value={subject.content}
-                                onChange={(e) => updateSubjectContent(selectedSection.id, subject.id, e.target.value)}
+                                onChange={(e) => updateSubjectContent(selectedSection?.id, subject.id, e.target.value)}
                                 className="subject-textarea"
-                                placeholder="Enter content here... (supports markdown)"
+                                placeholder="Add your content here..."
                               />
                             </motion.div>
                           )}
@@ -765,57 +828,12 @@ The parser recognizes:
                       </motion.div>
                     );
                   })}
-                </AnimatePresence>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
-      ) : (
-        // Preview Mode
-        <motion.div
-          className="preview-container"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-        >
-          <div className="preview-header">
-            <div>
-              <h2>Live Preview</h2>
-              <p>{sections.filter(s => s.visible).length} visible sections</p>
-            </div>
-            <div className="preview-actions">
-              <motion.button
-                onClick={copyToClipboard}
-                className="action-btn primary"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Copy size={16} />
-                <span>Copy</span>
-              </motion.button>
-              <motion.button
-                onClick={downloadPrompt}
-                className="action-btn primary"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Download size={16} />
-                <span>Download</span>
-              </motion.button>
-            </div>
-          </div>
-          <div className="preview-content">
-            <motion.div
-              className="preview-box"
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              <pre>{reconstructPrompt()}</pre>
-            </motion.div>
-          </div>
-        </motion.div>
-      )}
+      </div>
     </div>
   );
 }
