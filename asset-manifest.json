@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/prompter-app/static/css/main.0977ad5b.css",
+    "main.css": "/prompter-app/static/css/main.4ada5d47.css",
     "main.js": "/prompter-app/static/js/main.088b6fa1.js",
     "static/js/453.990340b5.chunk.js": "/prompter-app/static/js/453.990340b5.chunk.js",
     "index.html": "/prompter-app/index.html",
-    "main.0977ad5b.css.map": "/prompter-app/static/css/main.0977ad5b.css.map",
+    "main.4ada5d47.css.map": "/prompter-app/static/css/main.4ada5d47.css.map",
     "main.088b6fa1.js.map": "/prompter-app/static/js/main.088b6fa1.js.map",
     "453.990340b5.chunk.js.map": "/prompter-app/static/js/453.990340b5.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.0977ad5b.css",
+    "static/css/main.4ada5d47.css",
     "static/js/main.088b6fa1.js"
   ]
 }
